@@ -1,26 +1,49 @@
 // app/lib/modules/llm/providers/LocalLlamaProvider.ts
-import { BaseProvider, type ExecuteParams, type ProviderExecuteUpdates } from '../base-provider';
-import type { ModelInfo } from '../types';
+import { BaseProvider } from '../base-provider';
+import type { ModelInfo, ExecuteParams, ProviderConfig } from '../types';
+import type { LanguageModelV1 } from 'ai'; // Required for getModelInstance
+// streamToResponse is not used in this client-side execution model.
+// import { streamToResponse } from 'ai';
 
-// Assume llama.cpp server runs on localhost:8080 and has a similar API to OpenAI completions
-const LOCAL_LLAMA_API_URL = 'http://localhost:8080/v1/chat/completions'; // Or '/completion' depending on llama.cpp server setup
+// Assuming llama.cpp server runs on localhost:8080 and has a similar API to OpenAI completions
+const LOCAL_LLAMA_API_URL = 'http://localhost:8080/v1/chat/completions';
 
 export class LocalLlamaProvider extends BaseProvider {
+  // Implementing abstract/required properties from BaseProvider/ProviderInfo
+  name: string = 'Local LLaMA'; // Corresponds to ProviderConfig.name
+
+  staticModels: ModelInfo[] = [
+    {
+      id: 'local-model',
+      name: 'Default LLaMA Model',
+      provider: 'local-llama', // Matches this provider's ID
+      type: 'chat',
+      context: 4096,
+      features: ['streaming'],
+    },
+  ];
+
+  config: ProviderConfig = {
+    id: 'local-llama',
+    type: 'local' as const,
+    name: 'Local LLaMA',
+    messageRole: 'user' as const,
+    docsUrl: '', // Not strictly necessary for local
+    baseUrlKey: '',
+    apiTokenKey: '',
+    baseUrl: '',
+  };
+
+  // Optional properties from ProviderInfo
+  // icon?: string = 'path/to/local-llama-icon.svg';
+  // getApiKeyLink?: string = '';
+  // labelForGetApiKey?: string = '';
+
   constructor() {
-    super({
-      id: 'local-llama', // Matches LOCAL_PROVIDERS entry
-      name: 'Local LLaMA',
-      type: 'local',
-      messageRole: 'user',
-      docsUrl: '',
-      // Icon can be added if an SVG is created
-    });
+    super(); // Ensure BaseProvider constructor is called if it has logic
   }
 
-  async execute({ messages, updates, model }: ExecuteParams) {
-    const abortController = new AbortController();
-    updates.onAbort(() => abortController.abort());
-
+  async execute({ messages, updates, model, abortSignal }: ExecuteParams & { abortSignal?: AbortSignal }) {
     try {
       const response = await fetch(LOCAL_LLAMA_API_URL, {
         method: 'POST',
@@ -28,16 +51,15 @@ export class LocalLlamaProvider extends BaseProvider {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: model?.id || 'local-model', // Default model name if not specified
+          model: model?.id || 'local-model',
           messages: messages,
-          stream: true, // Assuming llama.cpp server supports streaming
+          stream: true,
         }),
-        signal: abortController.signal,
+        signal: abortSignal,
       });
 
       if (!response.ok) {
         const errorBody = await response.text();
-        // Try to parse errorBody if it's JSON, otherwise use as is
         let detailedError = errorBody;
         try {
           const jsonError = JSON.parse(errorBody);
@@ -54,7 +76,6 @@ export class LocalLlamaProvider extends BaseProvider {
         return;
       }
 
-      // Process stream (similar to OpenAIProvider's stream processing)
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
@@ -66,14 +87,14 @@ export class LocalLlamaProvider extends BaseProvider {
         buffer += decoder.decode(value, { stream: true });
 
         let eolIndex;
-        // Process multiple events if they are buffered
+        // Process multiple events if they are buffered. Assumes OpenAI-like SSE format (data: {...}\n\n)
         while ((eolIndex = buffer.indexOf('\n\n')) >= 0) {
           const line = buffer.slice(0, eolIndex).trim();
-          buffer = buffer.slice(eolIndex + 2); // Keep the +2 for consistency with typical SSE
+          buffer = buffer.slice(eolIndex + 2); // Consume the processed part + EOL chars
 
           if (line.startsWith('data: ')) {
             const jsonStr = line.substring(6);
-            if (jsonStr === '[DONE]') {
+            if (jsonStr.trim() === '[DONE]') {
               updates.onComplete();
               return;
             }
@@ -84,10 +105,9 @@ export class LocalLlamaProvider extends BaseProvider {
                 updates.onUpdate(content);
               }
             } catch (e) {
-              console.error('Error parsing Local LLaMA stream JSON:', e, jsonStr);
-              // It's possible that a non-JSON error message comes through the stream
+              console.error('Error parsing Local LLaMA stream JSON:', e, "\nRaw JSON string:", jsonStr);
               updates.onError(`Error parsing stream: ${e.message}. Received: ${jsonStr}`);
-              return; // Stop processing on stream parse error
+              return;
             }
           }
         }
@@ -96,7 +116,7 @@ export class LocalLlamaProvider extends BaseProvider {
 
     } catch (error) {
       if (error.name === 'AbortError') {
-        console.log('Local LLaMA request aborted');
+        console.log('Local LLaMA request aborted by client');
         updates.onComplete();
       } else {
         console.error('Error executing Local LLaMA provider:', error);
@@ -105,20 +125,58 @@ export class LocalLlamaProvider extends BaseProvider {
     }
   }
 
-  // Define available models for this local provider
-  async getModels(): Promise<ModelInfo[]> {
-    // This could fetch from the llama.cpp server if it has a models endpoint,
-    // or just return a predefined list.
-    return [
-      {
-        id: 'local-model', // A default model ID
-        name: 'Default LLaMA Model',
-        provider: 'local-llama',
-        type: 'chat',
-        context: 4096, // Example context window
-        features: ['streaming'],
+  // Implementing abstract method from BaseProvider
+  getModelInstance(options: {
+    model: string;
+    serverEnv?: Record<string, any>;
+    apiKeys?: Record<string, string>;
+    providerSettings?: Record<string, any>;
+  }): LanguageModelV1 {
+    console.warn(`getModelInstance called for LocalLlamaProvider with model ${options.model}. This provider is intended for client-side execution via its 'execute' method.`);
+
+    // This dummy implementation is to satisfy the abstract class requirement.
+    // It should not be used for actual LLM operations on the server for this provider.
+    return {
+      provider: this.config.id,
+      modelId: options.model,
+      doStream: async (params) => {
+        console.error("LocalLlamaProvider's dummy doStream called. This indicates incorrect server-side usage.");
+        // Vercel AI SDK v3 uses params.onChunk which returns {writable, update}
+        // For older versions or direct stream manipulation:
+        const stream = new ReadableStream({
+          start(controller) {
+            const message = "Error: LocalLlamaProvider not configured for server-side streaming via getModelInstance.";
+            controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ choices: [{ delta: { content: message } }] })}\n\n`));
+            controller.enqueue(new TextEncoder().encode(`data: [DONE]\n\n`));
+            controller.close();
+          }
+        });
+        // The return type of doStream is Promise<({ stream: ReadableStream; ... })>
+        // Constructing the full object expected by the AI SDK.
+        return Promise.resolve({
+          stream: stream,
+          rawResponse: { headers: new Headers() }, // Minimal raw response
+          cachedData: undefined, // No caching
+          headers: {}, // Additional headers if any
+          usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+          finishReason: 'error' as const,
+          logprobs: undefined, // Optional
+          toolCalls: undefined, // Optional
+          toolResult: undefined, // Optional
+        });
       },
-      // Add other local models if available
-    ];
+      // Implement other methods like doGenerate if required by LanguageModelV1 or BaseProvider
+      // For example, a dummy doGenerate:
+      doGenerate: async (params) => {
+        console.error("LocalLlamaProvider's dummy doGenerate called.");
+        return {
+          text: "Error: LocalLlamaProvider not configured for server-side generation.",
+          toolCalls: [],
+          finishReason: 'error' as const,
+          usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+          rawResponse: { headers: new Headers() },
+        };
+      }
+    } as LanguageModelV1;
   }
 }
