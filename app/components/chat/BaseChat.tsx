@@ -3,7 +3,7 @@
  * Preventing TS checks with files presented in the video for a better presentation.
  */
 import type { JSONValue, Message } from 'ai';
-import React, { type RefCallback, useEffect, useState, lazy, Suspense } from 'react'; // Added lazy, Suspense
+import React, { type RefCallback, useEffect, useState, lazy, Suspense, useRef, useCallback } from 'react'; // Added lazy, Suspense, useRef, useCallback
 import { ClientOnly } from 'remix-utils/client-only';
 import { Menu } from '~/components/sidebar/Menu.client';
 import { IconButton } from '~/components/ui/IconButton';
@@ -44,8 +44,11 @@ const ExpoQrModal = lazy(() => import('~/components/workbench/ExpoQrModal'));
 import { expoUrlAtom } from '~/lib/stores/qrCodeStore';
 import { useStore } from '@nanostores/react';
 import { StickToBottom, useStickToBottomContext, useConnectionStatus } from '~/lib/hooks'; // Added useConnectionStatus
+import { getLocalStorage, setLocalStorage } from '~/lib/persistence/localStorage'; // Import localStorage helpers
+import { showBottomNavBar, hideBottomNavBar } from '~/lib/stores/navigationBarStore'; // Import nav bar actions
 
 const TEXTAREA_MIN_HEIGHT = 76;
+const UNSENT_PROMPT_KEY = 'bolt_unsent_prompt'; // localStorage key
 
 interface BaseChatProps {
   textareaRef?: React.RefObject<HTMLTextAreaElement> | undefined;
@@ -136,6 +139,86 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
     const expoUrl = useStore(expoUrlAtom);
     const [qrModalOpen, setQrModalOpen] = useState(false);
     const { hasConnectionIssues, currentIssue } = useConnectionStatus(); // Added connection status hook
+
+    // --- Start of BottomNavigationBar scroll logic ---
+    const scrollableElementRef = useRef<HTMLDivElement | null>(null);
+    const lastScrollY = useRef(0);
+    const navBarThreshold = 56; // Height of the navbar, should match actual navbar height
+
+    const handleScrollEvent = useCallback(() => {
+      if (!scrollableElementRef.current) return;
+
+      if (!chatStarted) { // Always show if chat not started (e.g., on intro screen)
+        showBottomNavBar();
+        return;
+      }
+
+      const currentScrollY = scrollableElementRef.current.scrollTop;
+      // Show navbar if scrolling up or near the top/bottom or if content is not scrollable enough
+      const isNearBottom = scrollableElementRef.current.scrollHeight - currentScrollY - scrollableElementRef.current.clientHeight < navBarThreshold / 2;
+      const notEnoughScrollableContent = scrollableElementRef.current.scrollHeight <= scrollableElementRef.current.clientHeight + navBarThreshold;
+
+      if (currentScrollY < lastScrollY.current || currentScrollY <= navBarThreshold || isNearBottom || notEnoughScrollableContent) {
+        showBottomNavBar();
+      } else if (currentScrollY > lastScrollY.current && currentScrollY > navBarThreshold) {
+        hideBottomNavBar();
+      }
+      lastScrollY.current = currentScrollY;
+    }, [chatStarted, navBarThreshold]);
+
+    const handleScrollCallbackRef = useCallback((node: HTMLDivElement | null) => {
+      if (scrollableElementRef.current) {
+        scrollableElementRef.current.removeEventListener('scroll', handleScrollEvent);
+      }
+      scrollableElementRef.current = node;
+      if (scrollableElementRef.current) {
+        scrollableElementRef.current.addEventListener('scroll', handleScrollEvent);
+        // Initial check
+        lastScrollY.current = scrollableElementRef.current.scrollTop; // Initialize lastScrollY
+        handleScrollEvent(); // Call handler to set initial state based on scroll position and chatStarted
+      }
+    }, [chatStarted, handleScrollEvent]); // Rerun if chatStarted or handleScrollEvent changes
+
+    useEffect(() => {
+      // Ensure navbar is visible if chatStarted becomes false (e.g. navigating to new chat)
+      if (!chatStarted) {
+        showBottomNavBar();
+      }
+    }, [chatStarted]);
+
+    // Cleanup scroll listener on component unmount
+    useEffect(() => {
+      const currentRef = scrollableElementRef.current;
+      return () => {
+        if (currentRef) {
+          currentRef.removeEventListener('scroll', handleScrollEvent);
+        }
+      };
+    }, [handleScrollEvent]); // Re-attach if handleScrollEvent changes (due to chatStarted)
+    // --- End of BottomNavigationBar scroll logic ---
+
+    // Load unsent prompt on initial mount if input prop is empty
+    useEffect(() => {
+      if (input === '' && handleInputChange) {
+        const savedPrompt = getLocalStorage(UNSENT_PROMPT_KEY);
+        if (savedPrompt && typeof savedPrompt === 'string') {
+          const syntheticEvent = {
+            target: { value: savedPrompt },
+          } as React.ChangeEvent<HTMLTextAreaElement>;
+          handleInputChange(syntheticEvent);
+        }
+      }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [handleInputChange]); // Assuming handleInputChange is stable or this effect is fine to re-run if it changes.
+                           // `input` is intentionally omitted to only load if initial `input` is empty.
+
+    // Save prompt on change
+    useEffect(() => {
+      // Only save if `input` is not undefined to avoid writing "undefined" to localStorage initially
+      if (typeof input === 'string') {
+        setLocalStorage(UNSENT_PROMPT_KEY, input);
+      }
+    }, [input]);
 
     useEffect(() => {
       if (hasConnectionIssues && provider?.id !== 'local-llama' && providerList && setProvider && setModel) {
@@ -356,7 +439,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
           <div className={classNames(styles.Chat, 'flex flex-col flex-grow lg:min-w-[var(--chat-min-width)] h-full')}>
             {!chatStarted && (
               <div id="intro" className="mt-[16vh] max-w-chat mx-auto text-center px-4 lg:px-0">
-                <h1 className="text-3xl lg:text-6xl font-bold text-bolt-elements-textPrimary mb-4 animate-fade-in">
+                <h1 className="text-3xl max-w-[360px]:text-2xl lg:text-6xl font-bold text-bolt-elements-textPrimary mb-4 animate-fade-in"> {/* Title size adjustment */}
                   Where ideas begin
                 </h1>
                 <p className="text-md lg:text-xl mb-8 text-bolt-elements-textSecondary animate-fade-in animation-delay-200">
@@ -365,6 +448,9 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
               </div>
             )}
             <StickToBottom
+              // The scrollRef prop of BaseChat is a callback ref.
+              // We use our handleScrollCallbackRef to get the DOM node of StickToBottom.
+              ref={handleScrollCallbackRef}
               className={classNames('pt-6 px-2 sm:px-6 relative', {
                 'h-full flex flex-col modern-scrollbar': chatStarted,
               })}
@@ -525,7 +611,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                       dir="auto" // Added dir="auto" for RTL/LTR detection
                       ref={textareaRef}
                       className={classNames(
-                        'w-full ps-4 pt-4 pe-16 outline-none resize-none text-bolt-elements-textPrimary placeholder-bolt-elements-textTertiary bg-transparent text-sm', // Changed pl-4 to ps-4, pr-16 to pe-16
+                        'w-full ps-4 pt-4 pe-16 max-w-[360px]:ps-3 max-w-[360px]:pe-12 outline-none resize-none text-bolt-elements-textPrimary placeholder-bolt-elements-textTertiary bg-transparent text-sm', // Adjusted padding for small screens
                         'transition-all duration-200',
                         'hover:border-bolt-elements-focus',
                       )}
@@ -611,7 +697,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                         />
                       )}
                     </ClientOnly>
-                    <div className="flex justify-between items-center text-sm p-4 pt-2">
+                    <div className="flex justify-between items-center text-sm p-4 pt-2 max-w-[360px]:px-3 max-w-[360px]:pb-3"> {/* Adjusted padding for small screens */}
                       <div className="flex flex-wrap gap-1 items-center">
                         <IconButton title="Upload file" className="transition-all" onClick={() => handleFileUpload()}>
                           <div className="i-ph:paperclip text-xl"></div>

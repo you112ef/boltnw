@@ -16,7 +16,8 @@ import { useSearchFilter } from '~/lib/hooks/useSearchFilter';
 import { classNames } from '~/utils/classNames';
 // removed duplicate useStore import
 import { profileStore } from '~/lib/stores/profile';
-import { isSidebarOpen, setSidebarOpen, toggleSidebar } from '~/lib/stores/sidebarStore';
+import { isSidebarOpen, setSidebarOpen } from '~/lib/stores/sidebarStore'; // Removed toggleSidebar as it's not used here
+import { isSettingsModalOpen as isSettingsModalOpenStore, openSettingsModal, closeSettingsModal } from '~/lib/stores/settingsModalStore';
 
 const menuVariants = {
   closed: {
@@ -72,7 +73,7 @@ export const Menu = () => {
   const [list, setList] = useState<ChatHistoryItem[]>([]);
   const open = useStore(isSidebarOpen); // Use store for open state
   const [dialogContent, setDialogContent] = useState<DialogContent>(null);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const isSettingsOpen = useStore(isSettingsModalOpenStore); // Use store for settings modal state
   const profile = useStore(profileStore);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
@@ -315,12 +316,12 @@ export const Menu = () => {
   };
 
   const handleSettingsClick = () => {
-    setIsSettingsOpen(true);
-    setSidebarOpen(false); // Use store action
+    openSettingsModal(); // Use store action
+    setSidebarOpen(false); // Use store action for sidebar
   };
 
   const handleSettingsClose = () => {
-    setIsSettingsOpen(false);
+    closeSettingsModal(); // Use store action
   };
 
   const setDialogContentWithLogging = useCallback((content: DialogContent) => {
@@ -560,6 +561,8 @@ export const Menu = () => {
       </motion.div>
 
       <Suspense fallback={<div className="fixed inset-0 bg-black/30 flex items-center justify-center text-white text-xl z-50">Loading Settings...</div>}>
+        {/* ControlPanel's visibility is handled by its internal Radix Dialog state, which is controlled by the `open` prop.
+            The `isSettingsOpen` check here ensures the lazy-loaded component is only in the React tree when needed. */}
         {isSettingsOpen && <ControlPanel open={isSettingsOpen} onClose={handleSettingsClose} />}
       </Suspense>
     </>

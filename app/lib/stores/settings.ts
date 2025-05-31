@@ -264,11 +264,10 @@ export const updateTabConfiguration = (config: TabVisibilityConfig) => {
   console.log('New tab configuration after update:', newConfig);
 
   tabConfigurationStore.set(newConfig);
-  Cookies.set('tabConfiguration', JSON.stringify(newConfig), {
-    expires: 365, // Set cookie to expire in 1 year
-    path: '/',
-    sameSite: 'strict',
-  });
+  // Standardize to localStorage
+  if (isBrowser) {
+    localStorage.setItem('bolt_tab_configuration', JSON.stringify(newConfig));
+  }
 };
 
 // Helper function to reset tab configuration
