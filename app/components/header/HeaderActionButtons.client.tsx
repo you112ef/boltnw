@@ -188,7 +188,7 @@ function Button({ active = false, disabled = false, children, onClick, className
   return (
     <button
       className={classNames(
-        'flex items-center p-1.5',
+        'flex items-center justify-center p-1.5 min-w-11 min-h-11', // Added justify-center, min-w-11, min-h-11
         {
           'bg-bolt-elements-item-backgroundDefault hover:bg-bolt-elements-item-backgroundActive text-bolt-elements-textTertiary hover:text-bolt-elements-textPrimary':
             !active,

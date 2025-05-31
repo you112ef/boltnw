@@ -1,9 +1,11 @@
 import { motion, type Variants } from 'framer-motion';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, lazy, Suspense } from 'react'; // Keep useState for isMobileView, Added lazy and Suspense
 import { toast } from 'react-toastify';
+import { useStore } from '@nanostores/react';
 import { Dialog, DialogButton, DialogDescription, DialogRoot, DialogTitle } from '~/components/ui/Dialog';
 import { ThemeSwitch } from '~/components/ui/ThemeSwitch';
-import { ControlPanel } from '~/components/@settings/core/ControlPanel';
+// import { ControlPanel } from '~/components/@settings/core/ControlPanel'; // Changed to lazy import
+const ControlPanel = lazy(() => import('~/components/@settings/core/ControlPanel'));
 import { SettingsButton } from '~/components/ui/SettingsButton';
 import { Button } from '~/components/ui/Button';
 import { db, deleteById, getAll, chatId, type ChatHistoryItem, useChatHistory } from '~/lib/persistence';
@@ -12,25 +14,26 @@ import { HistoryItem } from './HistoryItem';
 import { binDates } from './date-binning';
 import { useSearchFilter } from '~/lib/hooks/useSearchFilter';
 import { classNames } from '~/utils/classNames';
-import { useStore } from '@nanostores/react';
+// removed duplicate useStore import
 import { profileStore } from '~/lib/stores/profile';
+import { isSidebarOpen, setSidebarOpen, toggleSidebar } from '~/lib/stores/sidebarStore';
 
 const menuVariants = {
   closed: {
+    x: '-100%',
     opacity: 0,
-    visibility: 'hidden',
-    left: '-340px',
+    pointerEvents: 'none',
     transition: {
-      duration: 0.2,
+      duration: 0.3,
       ease: cubicEasingFn,
     },
   },
   open: {
+    x: '0%',
     opacity: 1,
-    visibility: 'initial',
-    left: 0,
+    pointerEvents: 'auto',
     transition: {
-      duration: 0.2,
+      duration: 0.3,
       ease: cubicEasingFn,
     },
   },
@@ -67,7 +70,7 @@ export const Menu = () => {
   const { duplicateCurrentChat, exportChat } = useChatHistory();
   const menuRef = useRef<HTMLDivElement>(null);
   const [list, setList] = useState<ChatHistoryItem[]>([]);
-  const [open, setOpen] = useState(false);
+  const open = useStore(isSidebarOpen); // Use store for open state
   const [dialogContent, setDialogContent] = useState<DialogContent>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const profile = useStore(profileStore);
@@ -287,12 +290,15 @@ export const Menu = () => {
         return;
       }
 
-      if (event.pageX < enterThreshold) {
-        setOpen(true);
-      }
+      // Only allow mouse move to open on larger screens
+      if (window.innerWidth >= 768) { // md breakpoint
+        if (event.pageX < enterThreshold) {
+          setSidebarOpen(true); // Use store action
+        }
 
-      if (menuRef.current && event.clientX > menuRef.current.getBoundingClientRect().right + exitThreshold) {
-        setOpen(false);
+        if (menuRef.current && event.clientX > menuRef.current.getBoundingClientRect().right + exitThreshold) {
+          setSidebarOpen(false); // Use store action
+        }
       }
     }
 
@@ -301,7 +307,7 @@ export const Menu = () => {
     return () => {
       window.removeEventListener('mousemove', onMouseMove);
     };
-  }, [isSettingsOpen]);
+  }, [isSettingsOpen]); // Removed 'setOpen' from dependencies as it's from store now
 
   const handleDuplicate = async (id: string) => {
     await duplicateCurrentChat(id);
@@ -310,7 +316,7 @@ export const Menu = () => {
 
   const handleSettingsClick = () => {
     setIsSettingsOpen(true);
-    setOpen(false);
+    setSidebarOpen(false); // Use store action
   };
 
   const handleSettingsClose = () => {
@@ -322,19 +328,40 @@ export const Menu = () => {
     setDialogContent(content);
   }, []);
 
+  // Check for mobile view. This will only run on the client.
+  // Consider a resize listener if dynamic changes are needed after initial render.
+  const [isMobileView, setIsMobileView] = useState(false);
+
+  useEffect(() => {
+    const checkMobileView = () => setIsMobileView(window.innerWidth < 768);
+    checkMobileView(); // Initial check
+    window.addEventListener('resize', checkMobileView);
+    return () => window.removeEventListener('resize', checkMobileView);
+  }, []);
+
   return (
     <>
+      {open && isMobileView && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 bg-black/50 z-20" // z-20 is below z-sidebar (default 30)
+          onClick={() => setSidebarOpen(false)} // Use store action
+          aria-hidden="true"
+        />
+      )}
       <motion.div
         ref={menuRef}
         initial="closed"
         animate={open ? 'open' : 'closed'}
         variants={menuVariants}
-        style={{ width: '340px' }}
         className={classNames(
+          'w-[85%] md:w-[340px]', // Responsive width
           'flex selection-accent flex-col side-menu fixed top-0 h-full',
           'bg-white dark:bg-gray-950 border-r border-gray-100 dark:border-gray-800/50',
           'shadow-sm text-sm',
-          isSettingsOpen ? 'z-40' : 'z-sidebar',
+          isSettingsOpen ? 'z-40' : 'z-sidebar', // Ensure z-index is high enough
         )}
       >
         <div className="h-12 flex items-center justify-between px-4 border-b border-gray-100 dark:border-gray-800/50 bg-gray-50/50 dark:bg-gray-900/50">
@@ -364,7 +391,7 @@ export const Menu = () => {
             <div className="flex gap-2">
               <a
                 href="/"
-                className="flex-1 flex gap-2 items-center bg-purple-50 dark:bg-purple-500/10 text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-500/20 rounded-lg px-4 py-2 transition-colors"
+                className="flex-1 flex gap-2 items-center bg-purple-50 dark:bg-purple-500/10 text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-500/20 rounded-lg px-4 py-3 transition-colors" // Changed py-2 to py-3
               >
                 <span className="inline-block i-ph:plus-circle h-4 w-4" />
                 <span className="text-sm font-medium">Start new chat</span>
@@ -372,7 +399,7 @@ export const Menu = () => {
               <button
                 onClick={toggleSelectionMode}
                 className={classNames(
-                  'flex gap-1 items-center rounded-lg px-3 py-2 transition-colors',
+                  'flex gap-1 items-center justify-center rounded-lg px-3 py-3 transition-colors min-w-11 min-h-11', // Changed py-2 to py-3, added justify-center, min-w-11, min-h-11
                   selectionMode
                     ? 'bg-purple-600 dark:bg-purple-500 text-white border border-purple-700 dark:border-purple-600'
                     : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700',
@@ -387,7 +414,7 @@ export const Menu = () => {
                 <span className="i-ph:magnifying-glass h-4 w-4 text-gray-400 dark:text-gray-500" />
               </div>
               <input
-                className="w-full bg-gray-50 dark:bg-gray-900 relative pl-9 pr-3 py-2 rounded-lg focus:outline-none focus:ring-1 focus:ring-purple-500/50 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-500 border border-gray-200 dark:border-gray-800"
+                className="w-full bg-gray-50 dark:bg-gray-900 relative pl-9 pr-3 py-3 rounded-lg focus:outline-none focus:ring-1 focus:ring-purple-500/50 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-500 border border-gray-200 dark:border-gray-800" // Changed py-2 to py-3
                 type="search"
                 placeholder="Search chats..."
                 onChange={handleSearchChange}
@@ -399,14 +426,15 @@ export const Menu = () => {
             <div className="font-medium text-gray-600 dark:text-gray-400">Your Chats</div>
             {selectionMode && (
               <div className="flex items-center gap-2">
-                <Button variant="ghost" size="sm" onClick={selectAll}>
+                <Button variant="ghost" size="sm" onClick={selectAll} className="py-3"> {/* Changed size="sm" to use py-3 for height */}
                   {selectedItems.length === filteredList.length ? 'Deselect all' : 'Select all'}
                 </Button>
                 <Button
                   variant="destructive"
-                  size="sm"
+                  size="sm" // size="sm" provides h-8, text-xs. py-3 will override height.
                   onClick={handleBulkDeleteClick}
                   disabled={selectedItems.length === 0}
+                  className="py-3" // Added py-3 for height
                 >
                   Delete selected
                 </Button>
@@ -531,7 +559,9 @@ export const Menu = () => {
         </div>
       </motion.div>
 
-      <ControlPanel open={isSettingsOpen} onClose={handleSettingsClose} />
+      <Suspense fallback={<div className="fixed inset-0 bg-black/30 flex items-center justify-center text-white text-xl z-50">Loading Settings...</div>}>
+        {isSettingsOpen && <ControlPanel open={isSettingsOpen} onClose={handleSettingsClose} />}
+      </Suspense>
     </>
   );
 };

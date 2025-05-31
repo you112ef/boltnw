@@ -68,14 +68,14 @@ export function HistoryItem({
   return (
     <div
       className={classNames(
-        'group rounded-lg text-sm text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50/80 dark:hover:bg-gray-800/30 overflow-hidden flex justify-between items-center px-3 py-2 transition-colors',
+        'group rounded-lg text-sm text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50/80 dark:hover:bg-gray-800/30 overflow-hidden flex justify-between items-center px-3 py-3 transition-colors', // Changed py-2 to py-3
         { 'text-gray-900 dark:text-white bg-gray-50/80 dark:bg-gray-800/30': isActiveChat },
         { 'cursor-pointer': selectionMode },
       )}
       onClick={selectionMode ? handleItemClick : undefined}
     >
       {selectionMode && (
-        <div className="flex items-center mr-2" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center me-2" onClick={(e) => e.stopPropagation()}> {/* Changed mr-2 to me-2 */}
           <Checkbox
             id={`select-${item.id}`}
             checked={isSelected}
@@ -109,7 +109,7 @@ export function HistoryItem({
           onClick={selectionMode ? handleItemClick : undefined}
         >
           <WithTooltip tooltip={currentDescription}>
-            <span className="truncate pr-24">{currentDescription}</span>
+            <span className="truncate pe-24">{currentDescription}</span> {/* Changed pr-24 to pe-24 */}
           </WithTooltip>
           <div
             className={classNames(
@@ -178,7 +178,11 @@ const ChatActionButton = forwardRef(
         <button
           ref={ref}
           type="button"
-          className={`text-gray-400 dark:text-gray-500 hover:text-purple-500 dark:hover:text-purple-400 transition-colors ${icon} ${className ? className : ''}`}
+          className={classNames(
+            'flex items-center justify-center min-w-11 min-h-11 text-gray-400 dark:text-gray-500 hover:text-purple-500 dark:hover:text-purple-400 transition-colors',
+            icon,
+            className,
+          )}
           onClick={onClick}
         />
       </WithTooltip>

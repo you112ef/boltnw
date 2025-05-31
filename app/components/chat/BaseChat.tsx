@@ -3,7 +3,7 @@
  * Preventing TS checks with files presented in the video for a better presentation.
  */
 import type { JSONValue, Message } from 'ai';
-import React, { type RefCallback, useEffect, useState } from 'react';
+import React, { type RefCallback, useEffect, useState, lazy, Suspense } from 'react'; // Added lazy, Suspense
 import { ClientOnly } from 'remix-utils/client-only';
 import { Menu } from '~/components/sidebar/Menu.client';
 import { IconButton } from '~/components/ui/IconButton';
@@ -39,10 +39,11 @@ import type { ActionRunner } from '~/lib/runtime/action-runner';
 import { LOCAL_PROVIDERS } from '~/lib/stores/settings';
 import { SupabaseChatAlert } from '~/components/chat/SupabaseAlert';
 import { SupabaseConnection } from './SupabaseConnection';
-import { ExpoQrModal } from '~/components/workbench/ExpoQrModal';
+// import { ExpoQrModal } from '~/components/workbench/ExpoQrModal'; // Changed to lazy import
+const ExpoQrModal = lazy(() => import('~/components/workbench/ExpoQrModal'));
 import { expoUrlAtom } from '~/lib/stores/qrCodeStore';
 import { useStore } from '@nanostores/react';
-import { StickToBottom, useStickToBottomContext } from '~/lib/hooks';
+import { StickToBottom, useStickToBottomContext, useConnectionStatus } from '~/lib/hooks'; // Added useConnectionStatus
 
 const TEXTAREA_MIN_HEIGHT = 76;
 
@@ -134,6 +135,22 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
     const [progressAnnotations, setProgressAnnotations] = useState<ProgressAnnotation[]>([]);
     const expoUrl = useStore(expoUrlAtom);
     const [qrModalOpen, setQrModalOpen] = useState(false);
+    const { hasConnectionIssues, currentIssue } = useConnectionStatus(); // Added connection status hook
+
+    useEffect(() => {
+      if (hasConnectionIssues && provider?.id !== 'local-llama' && providerList && setProvider && setModel) {
+        const localLlamaProviderInfo = providerList.find(p => p.id === 'local-llama');
+        if (localLlamaProviderInfo) {
+          setProvider(localLlamaProviderInfo);
+          // Assuming LocalLlamaProvider defines a model with id 'local-model'
+          setModel('local-model');
+          toast.info('الوضع دون إنترنت مفعل. يتم استخدام الذكاء المحلي.');
+          console.log("Switched to local-llama due to connection issues. Current issue:", currentIssue);
+        } else {
+          console.warn("Connection issues detected, but 'local-llama' provider not found in providerList.");
+        }
+      }
+    }, [hasConnectionIssues, currentIssue, provider, setProvider, setModel, providerList]);
 
     useEffect(() => {
       if (expoUrl) {
@@ -491,15 +508,24 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                       />
                     )}
                   </ClientOnly>
+                  {/* Label for the custom prompt textarea */}
+                  <label
+                    htmlFor="custom-prompt-input"
+                    className="text-sm font-medium text-bolt-elements-textSecondary mb-1 block"
+                  >
+                    الوصف المخصص (Custom Prompt)
+                  </label>
                   <div
                     className={classNames(
                       'relative shadow-xs border border-bolt-elements-borderColor backdrop-blur rounded-lg',
                     )}
                   >
                     <textarea
+                      id="custom-prompt-input" // Added id for the label
+                      dir="auto" // Added dir="auto" for RTL/LTR detection
                       ref={textareaRef}
                       className={classNames(
-                        'w-full pl-4 pt-4 pr-16 outline-none resize-none text-bolt-elements-textPrimary placeholder-bolt-elements-textTertiary bg-transparent text-sm',
+                        'w-full ps-4 pt-4 pe-16 outline-none resize-none text-bolt-elements-textPrimary placeholder-bolt-elements-textTertiary bg-transparent text-sm', // Changed pl-4 to ps-4, pr-16 to pe-16
                         'transition-all duration-200',
                         'hover:border-bolt-elements-focus',
                       )}
@@ -586,7 +612,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                       )}
                     </ClientOnly>
                     <div className="flex justify-between items-center text-sm p-4 pt-2">
-                      <div className="flex gap-1 items-center">
+                      <div className="flex flex-wrap gap-1 items-center">
                         <IconButton title="Upload file" className="transition-all" onClick={() => handleFileUpload()}>
                           <div className="i-ph:paperclip text-xl"></div>
                         </IconButton>
@@ -636,7 +662,9 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                         </div>
                       ) : null}
                       <SupabaseConnection />
-                      <ExpoQrModal open={qrModalOpen} onClose={() => setQrModalOpen(false)} />
+                      <Suspense fallback={null}>
+                        {qrModalOpen && <ExpoQrModal open={qrModalOpen} onClose={() => setQrModalOpen(false)} />}
+                      </Suspense>
                     </div>
                   </div>
                 </div>
