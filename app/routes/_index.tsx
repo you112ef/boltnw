@@ -71,17 +71,9 @@ export default function Index() {
       <Header />
       {/* Start of GGUF local model feature section */}
       <div
-        style={{
-          padding: "1rem",
-          fontFamily: "Arial, sans-serif",
-          display: "flex",
-          flexDirection: "column",
-          gap: "1rem",
-          alignItems: "center",
-          width: "100%", // Ensure it takes available width for centering
-        }}
+        className="p-4 flex flex-col gap-4 items-center w-full font-sans"
       >
-        <h1 style={{ fontSize: "2rem", marginBottom: "1rem" }}>
+        <h1 className="text-xl sm:text-2xl mb-4">
           bolt.diy مع دعم نموذج gguf محلي
         </h1>
 
@@ -90,7 +82,7 @@ export default function Index() {
           accept=".gguf"
           onChange={handleFileUpload}
           disabled={loading}
-          style={{ width: "90%", maxWidth: 400, padding: "0.5rem", fontSize: "1rem", boxSizing: 'border-box' }}
+          className="w-[90%] max-w-sm sm:max-w-md p-2 text-sm sm:text-base box-border rounded border border-gray-300"
         />
 
         <textarea
@@ -98,48 +90,20 @@ export default function Index() {
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
           rows={5}
-          style={{
-            width: "90%",
-            maxWidth: 400,
-            fontSize: "1rem",
-            padding: "0.5rem",
-            borderRadius: 4,
-            border: "1px solid #ccc",
-            boxSizing: 'border-box'
-          }}
+          className="w-[90%] max-w-sm sm:max-w-md text-sm sm:text-base p-2 rounded border border-gray-300 box-border"
         />
 
         <button
           onClick={handleRun}
           disabled={loading}
-          style={{
-            width: "90%",
-            maxWidth: 400,
-            padding: "0.75rem",
-            fontSize: "1rem",
-            backgroundColor: "#007bff",
-            color: "white",
-            border: "none",
-            borderRadius: 6,
-            cursor: loading ? "not-allowed" : "pointer",
-          }}
+          className="w-[90%] max-w-sm sm:max-w-md p-3 text-sm sm:text-base bg-blue-600 hover:bg-blue-700 text-white rounded-md"
         >
           {loading ? "جارِ التشغيل..." : "تشغيل النموذج"}
         </button>
 
         {outputText && (
           <pre
-            style={{
-              width: "90%",
-              maxWidth: 400,
-              backgroundColor: "#f0f0f0",
-              padding: "1rem",
-              borderRadius: 6,
-              whiteSpace: "pre-wrap",
-              fontSize: "1rem",
-              marginTop: "1rem",
-              boxSizing: 'border-box'
-            }}
+            className="w-[90%] max-w-sm sm:max-w-md bg-gray-100 p-3 sm:p-4 rounded whitespace-pre-wrap text-xs sm:text-sm mt-4 box-border"
           >
             {outputText}
           </pre>
