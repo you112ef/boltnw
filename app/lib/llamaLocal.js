@@ -6,7 +6,7 @@ export async function loadWasm() {
   if (wasmModule) return wasmModule;
   // Ensure this path is correct based on your project structure.
   // It assumes 'public' is a sibling of 'app' or accessible from the root.
-  wasmModule = await import("../../public/llama-wasm/llama.js");
+  wasmModule = await import("/llama-wasm/llama.js");
   return wasmModule;
 }
 
