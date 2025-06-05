@@ -69,6 +69,7 @@ export default function Index() {
     <div className="flex flex-col h-full w-full bg-bolt-elements-background-depth-1">
       <BackgroundRays />
       <Header />
+      <ClientOnly fallback={<BaseChat />}>{() => <Chat />}</ClientOnly>
       {/* Start of GGUF local model feature section */}
       <div
         className="p-4 flex flex-col gap-4 items-center w-full font-sans"
@@ -110,7 +111,6 @@ export default function Index() {
         )}
       </div>
       {/* End of GGUF local model feature section */}
-      <ClientOnly fallback={<BaseChat />}>{() => <Chat />}</ClientOnly>
     </div>
   );
 }
